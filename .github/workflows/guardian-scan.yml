@@ -23,6 +23,16 @@ jobs:
       - name: Clonar el repositorio
         uses: actions/checkout@v4
 
+      # Trivy necesita un lockfile para detectar dependencias de npm.
+      # Si el repo no lo tiene commiteado, lo generamos al vuelo.
+      - name: Preparar lockfile
+        run: |
+          if [ -f package.json ] && [ ! -f package-lock.json ]; then
+            echo "No hay package-lock.json, generándolo..."
+            npm install --package-lock-only --ignore-scripts
+          fi
+          ls -la
+
       - name: Ejecutar Trivy (dependencias y archivos)
         uses: aquasecurity/trivy-action@master
         with:
@@ -50,18 +60,29 @@ jobs:
             ]
           }' trivy-results.json > resumen.json
 
-          echo "total=$(jq '.vulnerabilidades | length' resumen.json)" >> $GITHUB_OUTPUT
+          TOTAL=$(jq '.vulnerabilidades | length' resumen.json)
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "Trivy encontró $TOTAL vulnerabilidades"
+          jq -r '.vulnerabilidades[] | "  - \(.severidad)\t\(.cve)\t\(.paquete) \(.version)"' resumen.json
 
       - name: Enviar a Guardian (n8n)
+        env:
+          PR_NUM:    ${{ github.event.pull_request.number }}
+          PR_TITULO: ${{ github.event.pull_request.title }}
+          PR_AUTOR:  ${{ github.event.pull_request.user.login }}
+          PR_RAMA:   ${{ github.head_ref }}
+          PR_REPO:   ${{ github.repository }}
+          PR_URL:    ${{ github.event.pull_request.html_url }}
+          WEBHOOK:   ${{ secrets.GUARDIAN_WEBHOOK }}
         run: |
           jq -n \
             --slurpfile scan resumen.json \
-            --arg pr       "${{ github.event.pull_request.number }}" \
-            --arg titulo   "${{ github.event.pull_request.title }}" \
-            --arg autor    "${{ github.event.pull_request.user.login }}" \
-            --arg rama     "${{ github.head_ref }}" \
-            --arg repo     "${{ github.repository }}" \
-            --arg url      "${{ github.event.pull_request.html_url }}" \
+            --arg pr       "$PR_NUM" \
+            --arg titulo   "$PR_TITULO" \
+            --arg autor    "$PR_AUTOR" \
+            --arg rama     "$PR_RAMA" \
+            --arg repo     "$PR_REPO" \
+            --arg url      "$PR_URL" \
             '{
               pr:     ($pr | tonumber),
               titulo: $titulo,
@@ -72,10 +93,10 @@ jobs:
               hallazgos: $scan[0].vulnerabilidades
             }' > payload.json
 
-          curl -sS -X POST "${{ secrets.GUARDIAN_WEBHOOK }}" \
+          echo "Payload que se envía a Guardian:"
+          jq '.' payload.json
+
+          curl -sS -X POST "$WEBHOOK" \
             -H 'Content-Type: application/json' \
             --data @payload.json \
             --max-time 60
-
-      - name: Resumen en el log
-        run: echo "Guardian recibió ${{ steps.resumen.outputs.total }} hallazgos del PR #${{ github.event.pull_request.number }}"
