@@ -1,0 +1,81 @@
+# .github/workflows/guardian-scan.yml
+#
+# Corre Trivy en cada Pull Request y envía el resultado
+# al webhook de n8n (Guardian - Flujo 1).
+#
+# Requiere un secret en el repo:
+#   GUARDIAN_WEBHOOK  ->  https://TU-NGROK.ngrok-free.dev/webhook/guardian-scan
+
+name: Guardian - Escaneo de seguridad
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Ejecutar Trivy (dependencias y archivos)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'   # no truena el pipeline; Guardian decide qué hacer
+
+      - name: Compactar resultados
+        id: resumen
+        run: |
+          # Nos quedamos solo con lo que el agente necesita, para no mandar un JSON gigante
+          jq '{
+            vulnerabilidades: [
+              .Results[]?.Vulnerabilities[]? | {
+                cve:        .VulnerabilityID,
+                severidad:  .Severity,
+                paquete:    .PkgName,
+                version:    .InstalledVersion,
+                fix:        .FixedVersion,
+                titulo:     .Title
+              }
+            ]
+          }' trivy-results.json > resumen.json
+
+          echo "total=$(jq '.vulnerabilidades | length' resumen.json)" >> $GITHUB_OUTPUT
+
+      - name: Enviar a Guardian (n8n)
+        run: |
+          jq -n \
+            --slurpfile scan resumen.json \
+            --arg pr       "${{ github.event.pull_request.number }}" \
+            --arg titulo   "${{ github.event.pull_request.title }}" \
+            --arg autor    "${{ github.event.pull_request.user.login }}" \
+            --arg rama     "${{ github.head_ref }}" \
+            --arg repo     "${{ github.repository }}" \
+            --arg url      "${{ github.event.pull_request.html_url }}" \
+            '{
+              pr:     ($pr | tonumber),
+              titulo: $titulo,
+              autor:  $autor,
+              rama:   $rama,
+              repo:   $repo,
+              url:    $url,
+              hallazgos: $scan[0].vulnerabilidades
+            }' > payload.json
+
+          curl -sS -X POST "${{ secrets.GUARDIAN_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            --data @payload.json \
+            --max-time 60
+
+      - name: Resumen en el log
+        run: echo "Guardian recibió ${{ steps.resumen.outputs.total }} hallazgos del PR #${{ github.event.pull_request.number }}"
