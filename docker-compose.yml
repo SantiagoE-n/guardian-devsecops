@@ -1,0 +1,71 @@
+# Guardian — piezas nuevas para el Flujo 2
+#
+# Levanta la app que Guardian vigila y el proxy que le da a n8n
+# visibilidad de Docker sin exponerle el socket completo.
+#
+#   docker compose up -d --build
+#
+# Nota: n8n, Qdrant y Ollama ya corren aparte. Este compose se conecta
+# a la misma red 'guardian-net' que ya creaste.
+
+services:
+
+  # ─────────────────────────────────────────────────────────
+  # App demo: el servicio que se va a caer en la demostración
+  # ─────────────────────────────────────────────────────────
+  app-demo:
+    build: ./app-demo
+    container_name: app-demo
+    # 'no' es intencional: si Docker la reiniciara sola, el incidente
+    # duraría segundos y n8n no alcanzaría a detectarlo.
+    restart: "no"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 2
+      start_period: 10s
+    networks:
+      - guardian-net
+
+  # ─────────────────────────────────────────────────────────
+  # Proxy de solo lectura al socket de Docker
+  #
+  # n8n NO habla con el socket directamente. Habla con este proxy,
+  # que solo permite las operaciones marcadas con 1 más abajo.
+  # Todo lo demás (crear, borrar, ejecutar contenedores) está bloqueado.
+  # ─────────────────────────────────────────────────────────
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-proxy
+    restart: unless-stopped
+    environment:
+      # Permitido: listar contenedores y leer sus logs
+      CONTAINERS: 1
+      # Bloqueado explícitamente: nada de escritura ni acceso privilegiado
+      POST: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      EXEC: 0
+      IMAGES: 0
+      NETWORKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - guardian-net
+
+networks:
+  guardian-net:
+    external: true
