@@ -1,0 +1,11 @@
+{
+  "name": "guardian-app-demo",
+  "version": "1.0.0",
+  "description": "App de prueba que Guardian vigila. Usa dependencias vulnerables a proposito.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "4.17.1",
+    "axios": "0.21.0"
+  }
+}
