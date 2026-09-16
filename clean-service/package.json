@@ -1,0 +1,6 @@
+{
+  "name": "guardian-clean-service",
+  "version": "1.0.0",
+  "main": "clean.js",
+  "dependencies": {}
+}

@@ -3,6 +3,6 @@ WORKDIR /app
 RUN apk add --no-cache wget
 COPY package.json ./
 RUN npm install --omit=dev
-COPY server.js ./
-EXPOSE 3000
-CMD ["node", "server.js"]
+COPY worker.js ./
+EXPOSE 3001
+CMD ["node", "worker.js"]

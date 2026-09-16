@@ -1,0 +1,9 @@
+{
+  "name": "guardian-worker-jobs",
+  "version": "1.0.0",
+  "main": "worker.js",
+  "dependencies": {
+    "express": "4.17.1",
+    "minimist": "1.2.0"
+  }
+}
