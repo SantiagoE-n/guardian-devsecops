@@ -2,9 +2,9 @@
   "name": "guardian-demo",
   "version": "1.0.0",
   "dependencies": {
-    "axios": "0.21.0",
-    "lodash": "4.17.15",
-    "minimist": "1.2.0",
-    "express": "4.17.1"
+    "jsonwebtoken": "8.5.1",
+    "node-fetch": "2.6.1",
+    "tar": "4.4.13",
+    "ws": "7.4.0"
   }
 }
